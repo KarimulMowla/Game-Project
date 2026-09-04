@@ -24,6 +24,196 @@ import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
+class ResourceManager {
+    private static final String[] SEARCH_DIRS = {
+            "",
+            "Mini Soccer Game 2D/",
+            "spl-1/",
+            "../Mini Soccer Game 2D/",
+            "../spl-1/"
+    };
+
+    public static File findFile(String name) {
+        if (name == null || name.trim().isEmpty())
+            return null;
+        for (String prefix : SEARCH_DIRS) {
+            File f = new File(prefix + name);
+            if (f.exists() && f.isFile()) {
+                return f;
+            }
+        }
+        try {
+            File codeDir = new File(FootballGame.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+                    .getParentFile();
+            if (codeDir != null) {
+                File direct = new File(codeDir, name);
+                if (direct.exists() && direct.isFile())
+                    return direct;
+                for (String prefix : SEARCH_DIRS) {
+                    File f = new File(codeDir, prefix + name);
+                    if (f.exists() && f.isFile())
+                        return f;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    public static BufferedImage loadImage(String name) {
+        if (name == null || name.trim().isEmpty())
+            return null;
+
+        // 1. Try classpath resource stream
+        try {
+            InputStream is = FootballGame.class.getResourceAsStream("/" + name);
+            if (is == null)
+                is = FootballGame.class.getResourceAsStream(name);
+            if (is == null)
+                is = ClassLoader.getSystemResourceAsStream(name);
+            if (is != null) {
+                BufferedImage img = ImageIO.read(is);
+                if (img != null)
+                    return img;
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Try file search
+        File f = findFile(name);
+        if (f != null) {
+            try {
+                BufferedImage img = ImageIO.read(f);
+                if (img != null) {
+                    copyIfMissing(f, name);
+                    return img;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // 3. Fallbacks
+        if (name.equalsIgnoreCase("portugal_player.png")) {
+            BufferedImage fallback = loadImage("ai_portugal.png");
+            if (fallback != null)
+                return fallback;
+        }
+
+        System.err.println("Could not load image: " + name);
+        return null;
+    }
+
+    private static void copyIfMissing(File src, String name) {
+        try {
+            File dest1 = new File("Mini Soccer Game 2D", name);
+            File parentDir = dest1.getParentFile();
+            if (parentDir != null && parentDir.exists() && !dest1.exists()) {
+                copyFile(src, dest1);
+            }
+            File dest2 = new File(name);
+            if (dest2.getParentFile() == null && !dest2.exists() && !src.equals(dest2)) {
+                File marker = new File("field.png");
+                if (marker.exists()) {
+                    copyFile(src, dest2);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void copyFile(File src, File dest) {
+        try (InputStream in = new FileInputStream(src);
+                OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static ImageIcon loadScaledIcon(String name, int width, int height) {
+        BufferedImage img = loadImage(name);
+        if (img != null) {
+            Image scaled = img.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+            return new ImageIcon(scaled);
+        }
+        return null;
+    }
+
+    public static BufferedImage createFallbackFlag(Team team, int width, int height) {
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (team == Team.ARGENTINA) {
+            g.setColor(new Color(117, 170, 219));
+            g.fillRect(0, 0, width, height);
+            g.setColor(Color.WHITE);
+            g.fillRect(0, height / 3, width, height / 3);
+            g.setColor(new Color(255, 204, 0));
+            g.fillOval(width / 2 - 12, height / 2 - 12, 24, 24);
+        } else if (team == Team.BRAZIL) {
+            g.setColor(new Color(0, 156, 59));
+            g.fillRect(0, 0, width, height);
+            g.setColor(new Color(255, 223, 0));
+            Polygon diamond = new Polygon(
+                    new int[] { width / 2, width - 15, width / 2, 15 },
+                    new int[] { 10, height / 2, height - 10, height / 2 },
+                    4);
+            g.fillPolygon(diamond);
+            g.setColor(new Color(0, 39, 118));
+            g.fillOval(width / 2 - 18, height / 2 - 18, 36, 36);
+        } else if (team == Team.GERMANY) {
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, width, height / 3);
+            g.setColor(new Color(221, 0, 0));
+            g.fillRect(0, height / 3, width, height / 3);
+            g.setColor(new Color(255, 206, 0));
+            g.fillRect(0, 2 * height / 3, width, height / 3);
+        } else if (team == Team.PORTUGAL) {
+            int splitX = (int) (width * 0.4);
+            g.setColor(new Color(0, 102, 0));
+            g.fillRect(0, 0, splitX, height);
+            g.setColor(new Color(255, 0, 0));
+            g.fillRect(splitX, 0, width - splitX, height);
+            g.setColor(new Color(255, 215, 0));
+            g.fillOval(splitX - 16, height / 2 - 16, 32, 32);
+            g.setColor(Color.WHITE);
+            g.fillOval(splitX - 8, height / 2 - 8, 16, 16);
+        }
+        g.dispose();
+        return img;
+    }
+
+    public static AudioInputStream getAudioStream(String name) {
+        if (name == null || name.trim().isEmpty())
+            return null;
+
+        // Classpath
+        try {
+            InputStream is = FootballGame.class.getResourceAsStream("/" + name);
+            if (is == null)
+                is = FootballGame.class.getResourceAsStream(name);
+            if (is != null) {
+                return AudioSystem.getAudioInputStream(new BufferedInputStream(is));
+            }
+        } catch (Exception ignored) {
+        }
+
+        // File system
+        File f = findFile(name);
+        if (f != null) {
+            try {
+                copyIfMissing(f, name);
+                return AudioSystem.getAudioInputStream(new BufferedInputStream(new FileInputStream(f)));
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+}
+
 class SoundPlayer {
     private Clip backgroundClip;
 
@@ -51,7 +241,9 @@ class SoundPlayer {
     }
 
     public void playPassSound(int passCount) {
-        playSoundEffect("pass.wav");
+        if (!playSoundEffect("pass.wav")) {
+            playSoundEffect("another_Pass .wav");
+        }
     }
 
     public void playShootSound() {
@@ -64,39 +256,46 @@ class SoundPlayer {
     public void playSaveSound() {
     }
 
-
     private void playLoopingSound(String filePath) {
         stopMusic();
         try {
-            File audioFile = new File(filePath);
-            AudioInputStream audioStream = AudioSystem.getAudioInputStream(audioFile);
+            AudioInputStream audioStream = ResourceManager.getAudioStream(filePath);
+            if (audioStream == null) {
+                System.err.println("Looping sound not found: " + filePath);
+                return;
+            }
             backgroundClip = AudioSystem.getClip();
             backgroundClip.open(audioStream);
             backgroundClip.loop(Clip.LOOP_CONTINUOUSLY);
             backgroundClip.start();
         } catch (Exception e) {
-            System.err.println("Error playing looping sound: " + filePath);
-            e.printStackTrace();
+            System.err.println("Error playing looping sound: " + filePath + " (" + e.getMessage() + ")");
         }
     }
 
-    private void playSoundEffect(String filePath) {
+    private boolean playSoundEffect(String filePath) {
         try {
-            File audioFile = new File(filePath);
-            AudioInputStream audioStream = AudioSystem.getAudioInputStream(audioFile);
+            AudioInputStream audioStream = ResourceManager.getAudioStream(filePath);
+            if (audioStream == null) {
+                return false;
+            }
             Clip effectClip = AudioSystem.getClip();
             effectClip.open(audioStream);
             effectClip.start();
+            return true;
         } catch (Exception e) {
-            System.err.println("Error playing sound effect: " + filePath);
-            e.printStackTrace();
+            System.err.println("Error playing sound effect: " + filePath + " (" + e.getMessage() + ")");
+            return false;
         }
     }
 
     public void stopMusic() {
         if (backgroundClip != null) {
-            backgroundClip.stop();
-            backgroundClip.close();
+            try {
+                backgroundClip.stop();
+                backgroundClip.close();
+            } catch (Exception ignored) {
+            }
             backgroundClip = null;
         }
     }
@@ -117,12 +316,12 @@ public class FootballGame {
 
             MatchHistory matchHistory = new MatchHistory();
 
-            MainMenuPanel mainMenu = new MainMenuPanel(matchHistory, () -> cardLayout.show(mainPanel, "difficulty"), () -> System.exit(0));
+            MainMenuPanel mainMenu = new MainMenuPanel(matchHistory, () -> cardLayout.show(mainPanel, "difficulty"),
+                    () -> System.exit(0));
 
             DifficultyPanel difficultyPanel = new DifficultyPanel(
                     () -> cardLayout.show(mainPanel, "team_selection"),
-                    () -> cardLayout.show(mainPanel, "menu")
-            );
+                    () -> cardLayout.show(mainPanel, "menu"));
 
             GamePanel gamePanel = new GamePanel(frame, soundPlayer, matchHistory, () -> {
                 soundPlayer.playMenuMusic();
@@ -150,17 +349,21 @@ public class FootballGame {
 
 class RoundedBorder implements Border {
     private int radius;
+
     RoundedBorder(int radius) {
         this.radius = radius;
     }
+
     public Insets getBorderInsets(Component c) {
-        return new Insets(this.radius+1, this.radius+1, this.radius+2, this.radius);
+        return new Insets(this.radius + 1, this.radius + 1, this.radius + 2, this.radius);
     }
+
     public boolean isBorderOpaque() {
         return true;
     }
+
     public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-        g.drawRoundRect(x, y, width-1, height-1, radius, radius);
+        g.drawRoundRect(x, y, width - 1, height - 1, radius, radius);
     }
 }
 
@@ -195,7 +398,8 @@ class CustomMessageDialog extends JDialog {
         setUndecorated(true);
         setBackground(new Color(0, 0, 0, 0));
 
-        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112), new Color(0, 0, 50));
+        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112),
+                new Color(0, 0, 50));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(20, 30, 20, 30));
         GridBagConstraints gbc = new GridBagConstraints();
 
@@ -230,6 +434,7 @@ class CustomMessageDialog extends JDialog {
             public void mouseEntered(MouseEvent evt) {
                 button.setBackground(hover);
             }
+
             public void mouseExited(MouseEvent evt) {
                 button.setBackground(normal);
             }
@@ -243,7 +448,8 @@ class MatchHistoryDialog extends JDialog {
         setUndecorated(true);
         setBackground(new Color(0, 0, 0, 0));
 
-        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112), new Color(0, 0, 50));
+        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112),
+                new Color(0, 0, 50));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(20, 30, 20, 30));
         GridBagConstraints gbc = new GridBagConstraints();
 
@@ -262,22 +468,22 @@ class MatchHistoryDialog extends JDialog {
         historyArea.setEditable(false);
         historyArea.setOpaque(false);
         historyArea.setForeground(Color.WHITE);
-        
+
         JScrollPane scrollPane = new JScrollPane(historyArea);
         scrollPane.setPreferredSize(new Dimension(400, 250));
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
         scrollPane.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 180), 1));
-        
+
         gbc.gridy = 1;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weighty = 1.0;
         mainPanel.add(scrollPane, gbc);
-        
+
         JButton closeButton = new JButton("Close");
         styleButton(closeButton, new Color(220, 20, 60), new Color(178, 34, 34));
         closeButton.addActionListener(e -> dispose());
-        
+
         gbc.gridy = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weighty = 0;
@@ -288,7 +494,7 @@ class MatchHistoryDialog extends JDialog {
         pack();
         setLocationRelativeTo(parent);
     }
-    
+
     private void styleButton(JButton button, Color normal, Color hover) {
         button.setFont(new Font("Segoe UI", Font.BOLD, 16));
         button.setForeground(Color.WHITE);
@@ -301,6 +507,7 @@ class MatchHistoryDialog extends JDialog {
             public void mouseEntered(MouseEvent evt) {
                 button.setBackground(hover);
             }
+
             public void mouseExited(MouseEvent evt) {
                 button.setBackground(normal);
             }
@@ -308,13 +515,13 @@ class MatchHistoryDialog extends JDialog {
     }
 }
 
-
 class CustomGameOverDialog extends JDialog {
     public CustomGameOverDialog(JFrame parent, String title, String line1, String line2, Runnable onYes) {
         super(parent, title, true);
         setUndecorated(true);
-        setBackground(new Color(0, 0, 0, 0)); 
-        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112), new Color(0, 0, 50));
+        setBackground(new Color(0, 0, 0, 0));
+        RoundedGradientPanel mainPanel = new RoundedGradientPanel(new GridBagLayout(), new Color(25, 25, 112),
+                new Color(0, 0, 50));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(20, 30, 20, 30));
         GridBagConstraints gbc = new GridBagConstraints();
 
@@ -346,20 +553,20 @@ class CustomGameOverDialog extends JDialog {
 
         JPanel buttonPanel = new JPanel(new GridLayout(1, 2, 15, 0));
         buttonPanel.setOpaque(false);
-        
+
         JButton yesButton = new JButton("Yes");
         JButton noButton = new JButton("No");
 
         styleButton(yesButton, new Color(60, 179, 113), new Color(46, 139, 87));
         styleButton(noButton, new Color(220, 20, 60), new Color(178, 34, 34));
-        
+
         buttonPanel.add(yesButton);
         buttonPanel.add(noButton);
-        
+
         gbc.gridy = 3;
         gbc.insets = new Insets(10, 20, 20, 20);
         mainPanel.add(buttonPanel, gbc);
-        
+
         yesButton.addActionListener(e -> {
             dispose();
             onYes.run();
@@ -384,6 +591,7 @@ class CustomGameOverDialog extends JDialog {
             public void mouseEntered(MouseEvent evt) {
                 button.setBackground(hover);
             }
+
             public void mouseExited(MouseEvent evt) {
                 button.setBackground(normal);
             }
@@ -404,7 +612,9 @@ class MatchResult implements Serializable {
     public MatchResult(String team1Name, int team1Score, String team2Name, int team2Score) {
         this(team1Name, team1Score, team2Name, team2Score, false, 0, 0);
     }
-    public MatchResult(String team1Name, int team1Score, String team2Name, int team2Score, boolean isPenalty, int p1, int p2) {
+
+    public MatchResult(String team1Name, int team1Score, String team2Name, int team2Score, boolean isPenalty, int p1,
+            int p2) {
         this.team1Name = team1Name;
         this.team1Score = team1Score;
         this.team2Name = team2Name;
@@ -419,9 +629,10 @@ class MatchResult implements Serializable {
         String formattedTeam1 = team1Name.substring(0, 1).toUpperCase() + team1Name.substring(1).toLowerCase();
         String formattedTeam2 = team2Name.substring(0, 1).toUpperCase() + team2Name.substring(1).toLowerCase();
         if (isPenalty) {
-             return String.format("%-10s %d (%d) - (%d) %d %s", formattedTeam1, team1Score, penalty1, penalty2, team2Score, formattedTeam2);
+            return String.format("%-10s %d (%d) - (%d) %d %s", formattedTeam1, team1Score, penalty1, penalty2,
+                    team2Score, formattedTeam2);
         } else {
-             return String.format("%-10s %d - %d %s", formattedTeam1, team1Score, team2Score, formattedTeam2);
+            return String.format("%-10s %d - %d %s", formattedTeam1, team1Score, team2Score, formattedTeam2);
         }
     }
 }
@@ -442,19 +653,33 @@ class MatchHistory {
         saveHistory();
     }
 
+    private File getHistoryFile() {
+        File f = ResourceManager.findFile(HISTORY_FILE);
+        if (f != null)
+            return f;
+        File sub = new File("Mini Soccer Game 2D", HISTORY_FILE);
+        if (sub.getParentFile() != null && sub.getParentFile().exists())
+            return sub;
+        return new File(HISTORY_FILE);
+    }
+
     @SuppressWarnings("unchecked")
     private void loadHistory() {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(HISTORY_FILE))) {
-            results = (List<MatchResult>) ois.readObject();
-        } catch (FileNotFoundException e) {
-            results = new ArrayList<>();
-        } catch (IOException | ClassNotFoundException e) {
-            System.err.println("Error loading match history: " + e.getMessage());
-            results = new ArrayList<>();
+        File file = getHistoryFile();
+        if (file.exists()) {
+            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+                results = (List<MatchResult>) ois.readObject();
+                return;
+            } catch (Exception e) {
+                System.err.println("Error loading match history: " + e.getMessage());
+            }
         }
+        results = new ArrayList<>();
     }
+
     private void saveHistory() {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(HISTORY_FILE))) {
+        File file = getHistoryFile();
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
             oos.writeObject(results);
         } catch (IOException e) {
             System.err.println("Error saving match history: " + e.getMessage());
@@ -498,10 +723,8 @@ class MainMenuPanel extends JPanel {
         this.matchHistory = matchHistory;
         setPreferredSize(new Dimension(GamePanel.WIDTH, GamePanel.HEIGHT));
         setLayout(new GridBagLayout());
-        try {
-            backgroundImage = ImageIO.read(new File("background.jpg"));
-        } catch (IOException e) {
-            System.err.println("Background image not found: background.jpg");
+        backgroundImage = ResourceManager.loadImage("background.jpg");
+        if (backgroundImage == null) {
             setBackground(new Color(0, 50, 0));
         }
         GridBagConstraints gbc = new GridBagConstraints();
@@ -574,10 +797,8 @@ class DifficultyPanel extends JPanel {
     public DifficultyPanel(Runnable onDifficultySelected, Runnable onBack) {
         setPreferredSize(new Dimension(GamePanel.WIDTH, GamePanel.HEIGHT));
         setLayout(new GridBagLayout());
-        try {
-            backgroundImage = ImageIO.read(new File("background.jpg"));
-        } catch (IOException e) {
-            System.err.println("Background image not found: background.jpg");
+        backgroundImage = ResourceManager.loadImage("background.jpg");
+        if (backgroundImage == null) {
             setBackground(new Color(0, 50, 0));
         }
 
@@ -634,7 +855,6 @@ class DifficultyPanel extends JPanel {
     }
 }
 
-
 @FunctionalInterface
 interface GameStarter {
     void startGame(Team userTeam, Team aiTeam);
@@ -646,10 +866,12 @@ class TeamSelectionPanel extends JPanel {
     private final Map<Team, JButton> userButtons = new HashMap<>();
     private final Map<Team, JButton> aiButtons = new HashMap<>();
     private final JButton startMatchButton;
+    private BufferedImage backgroundImage;
 
     public TeamSelectionPanel(GameStarter gameStarter, Runnable onBack) {
         setLayout(new BorderLayout());
         setBackground(new Color(10, 20, 10));
+        backgroundImage = ResourceManager.loadImage("background.jpg");
 
         JLabel titleLabel = new JLabel("Team Selection", SwingConstants.CENTER);
         titleLabel.setFont(new Font("Arial", Font.BOLD, 48));
@@ -684,8 +906,7 @@ class TeamSelectionPanel extends JPanel {
                 title,
                 0, 0,
                 new Font("Arial", Font.BOLD, 24),
-                Color.WHITE
-        ));
+                Color.WHITE));
 
         JPanel flagsPanel = new JPanel(new GridLayout(1, 4, 15, 15));
         flagsPanel.setOpaque(false);
@@ -693,21 +914,20 @@ class TeamSelectionPanel extends JPanel {
         panel.add(flagsPanel, BorderLayout.CENTER);
 
         for (Team team : Team.values()) {
-            try {
-                String path = team.name().toLowerCase() + "_flag.png";
-                ImageIcon icon = new ImageIcon(new ImageIcon(path).getImage().getScaledInstance(150, 100, Image.SCALE_SMOOTH));
-                JButton button = new JButton(icon);
-                button.setOpaque(false);
-                button.setContentAreaFilled(false);
-                button.setBorder(new LineBorder(Color.GRAY, 2));
-                flagsPanel.add(button);
-                buttonMap.put(team, button);
-            } catch (Exception e) {
-                System.err.println("Could not load flag: " + team.name().toLowerCase() + "_flag.png");
-                JButton button = new JButton(team.name());
-                flagsPanel.add(button);
-                buttonMap.put(team, button);
+            String path = team.name().toLowerCase() + "_flag.png";
+            ImageIcon icon = ResourceManager.loadScaledIcon(path, 150, 100);
+            if (icon == null) {
+                BufferedImage fallbackFlag = ResourceManager.createFallbackFlag(team, 150, 100);
+                icon = new ImageIcon(fallbackFlag);
             }
+            JButton button = new JButton(icon);
+            button.setOpaque(false);
+            button.setContentAreaFilled(false);
+            button.setFocusPainted(false);
+            button.setBorder(new LineBorder(Color.GRAY, 2));
+            button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            flagsPanel.add(button);
+            buttonMap.put(team, button);
         }
         return panel;
     }
@@ -743,6 +963,14 @@ class TeamSelectionPanel extends JPanel {
     private void checkIfReadyToStart() {
         startMatchButton.setEnabled(userTeam != null && aiTeam != null);
     }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        if (backgroundImage != null) {
+            g.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), this);
+        }
+    }
 }
 
 class GamePanel extends JPanel implements Runnable {
@@ -759,9 +987,18 @@ class GamePanel extends JPanel implements Runnable {
     public static double USER_SPEED = 1.0;
     public static double AI_BASE_SPEED = 0.8;
 
-    public enum GameState { KICK_OFF, RUNNING, GAME_OVER, PENALTY_SHOOTOUT }
-    private enum PenaltyState { AIMING, KICKING, RESULT }
-    private enum ShotDirection { LEFT, CENTER, RIGHT }
+    public enum GameState {
+        KICK_OFF, RUNNING, GAME_OVER, PENALTY_SHOOTOUT
+    }
+
+    private enum PenaltyState {
+        AIMING, KICKING, RESULT
+    }
+
+    private enum ShotDirection {
+        LEFT, CENTER, RIGHT
+    }
+
     private GameState gameState;
     private PenaltyState penaltyState;
     private ShotDirection shotDirection;
@@ -806,7 +1043,6 @@ class GamePanel extends JPanel implements Runnable {
     private Player penaltyKicker;
     private Player penaltyGoalkeeper;
 
-
     public GamePanel(JFrame parentFrame, SoundPlayer soundPlayer, MatchHistory matchHistory, Runnable onGameEnd) {
         this.parentFrame = parentFrame;
         this.soundPlayer = soundPlayer;
@@ -818,20 +1054,42 @@ class GamePanel extends JPanel implements Runnable {
         setLayout(null);
 
         pauseButton = new JButton("Pause");
-        pauseButton.setBounds(WIDTH - 130, 10, 100, 40);
         pauseButton.setFont(new Font("Arial", Font.BOLD, 16));
         pauseButton.setFocusable(false);
+        pauseButton.setBackground(new Color(0, 0, 100, 200));
+        pauseButton.setForeground(Color.WHITE);
+        pauseButton.setBorder(new RoundedBorder(10));
+        pauseButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         pauseButton.addActionListener(e -> pauseGame());
         add(pauseButton);
 
         createPauseMenu(onGameEnd);
 
-        try {
-            fieldImage = ImageIO.read(new File("field.png"));
-            ballImage = ImageIO.read(new File("ball.png"));
-        } catch (IOException e) {
-            System.err.println("Could not load image: " + e.getMessage());
+        fieldImage = ResourceManager.loadImage("field.png");
+        ballImage = ResourceManager.loadImage("ball.png");
+        userGkPenaltySprite = ResourceManager.loadImage("gk_penalty.png");
+        if (fieldImage == null) {
             setBackground(new Color(0, 128, 0));
+        }
+    }
+
+    @Override
+    public void doLayout() {
+        super.doLayout();
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 0 || h <= 0)
+            return;
+
+        if (pauseButton != null) {
+            int btnW = 100;
+            int btnH = 40;
+            pauseButton.setBounds(w - btnW - 20, 15, btnW, btnH);
+        }
+        if (pauseMenuPanel != null) {
+            int menuW = 400;
+            int menuH = 300;
+            pauseMenuPanel.setBounds((w - menuW) / 2, (h - menuH) / 2, menuW, menuH);
         }
     }
 
@@ -863,8 +1121,8 @@ class GamePanel extends JPanel implements Runnable {
 
     public void pauseGame() {
         if (gameState != GameState.PENALTY_SHOOTOUT) {
-             paused = true;
-             repaint();
+            paused = true;
+            repaint();
         }
     }
 
@@ -873,12 +1131,12 @@ class GamePanel extends JPanel implements Runnable {
         requestFocusInWindow();
     }
 
-
     public void startGame(Team userTeam, Team aiTeam) {
         this.userTeam = userTeam;
         this.aiTeam = aiTeam;
-        if (running) return;
-       
+        if (running)
+            return;
+
         paused = false;
         initializeGame(userTeam, aiTeam);
         scoreTeam1 = 0;
@@ -891,11 +1149,11 @@ class GamePanel extends JPanel implements Runnable {
         passCountTeam2 = 0;
         lastPassingTeam = "";
         this.remainingSeconds = MATCH_DURATION_SECONDS;
-        
+
         this.penaltyMessage = "";
         this.penaltyState = null;
 
-        this.kickOffTakerTeamName = "Team 1"; 
+        this.kickOffTakerTeamName = "Team 1";
         resetPositions();
 
         running = true;
@@ -905,12 +1163,7 @@ class GamePanel extends JPanel implements Runnable {
     }
 
     private BufferedImage loadSprite(String path) {
-        try {
-            return ImageIO.read(new File(path));
-        } catch (IOException e) {
-            System.err.println("Could not load sprite: " + path);
-            return null;
-        }
+        return ResourceManager.loadImage(path);
     }
 
     private void initializeGame(Team userTeam, Team aiTeam) {
@@ -927,18 +1180,30 @@ class GamePanel extends JPanel implements Runnable {
         team1 = new ArrayList<>();
         team2 = new ArrayList<>();
         allPlayers = new ArrayList<>();
-        team1.add(new Player(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.STRIKER, this));
-        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userGkSprite, Color.CYAN, "Team 1", Player.PlayerRole.GOALKEEPER, this));
-        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.DEFENDER, this));
-        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.DEFENDER, this));
-        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.MIDFIELDER, this));
-        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.MIDFIELDER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.STRIKER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiGkSprite, Color.ORANGE, "Team 2", Player.PlayerRole.GOALKEEPER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.DEFENDER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.DEFENDER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.MIDFIELDER, this));
-        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.MIDFIELDER, this));
+        team1.add(
+                new Player(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.STRIKER, this));
+        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userGkSprite, Color.CYAN, "Team 1", Player.PlayerRole.GOALKEEPER,
+                this));
+        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.DEFENDER,
+                this));
+        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.DEFENDER,
+                this));
+        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.MIDFIELDER,
+                this));
+        team1.add(new AIPlayer(0, 0, PLAYER_SIZE, userPlayerSprite, Color.CYAN, "Team 1", Player.PlayerRole.MIDFIELDER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.STRIKER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiGkSprite, Color.ORANGE, "Team 2", Player.PlayerRole.GOALKEEPER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.DEFENDER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.DEFENDER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.MIDFIELDER,
+                this));
+        team2.add(new AIPlayer(0, 0, PLAYER_SIZE, aiPlayerSprite, Color.ORANGE, "Team 2", Player.PlayerRole.MIDFIELDER,
+                this));
         allPlayers.addAll(team1);
         allPlayers.addAll(team2);
     }
@@ -967,7 +1232,8 @@ class GamePanel extends JPanel implements Runnable {
     }
 
     private void update() {
-        if (paused) return;
+        if (paused)
+            return;
 
         if (gameState == GameState.PENALTY_SHOOTOUT) {
             updatePenaltyShootout();
@@ -1001,11 +1267,14 @@ class GamePanel extends JPanel implements Runnable {
         ball.checkWallCollision(PLAYABLE_X, PLAYABLE_X + PLAYABLE_WIDTH, PLAYABLE_Y, PLAYABLE_Y + PLAYABLE_HEIGHT);
         allPlayers.forEach(p -> p.checkCollisions(ball, allPlayers));
     }
-    
+
     private void checkGoal() {
         int goalHeight = 100;
-        Line2D.Double leftGoalLine = new Line2D.Double(PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0, PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0);
-        Line2D.Double rightGoalLine = new Line2D.Double(PLAYABLE_X + PLAYABLE_WIDTH, PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0, PLAYABLE_X + PLAYABLE_WIDTH, PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0);
+        Line2D.Double leftGoalLine = new Line2D.Double(PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0,
+                PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0);
+        Line2D.Double rightGoalLine = new Line2D.Double(PLAYABLE_X + PLAYABLE_WIDTH,
+                PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0, PLAYABLE_X + PLAYABLE_WIDTH,
+                PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0);
         Rectangle2D.Double ballBounds = ball.getBounds();
         if (leftGoalLine.intersects(ballBounds)) {
             scoreTeam2++;
@@ -1037,7 +1306,8 @@ class GamePanel extends JPanel implements Runnable {
         setFormation(team1, 1);
         setFormation(team2, 2);
 
-        if (kickOffTakerTeamName == null) return;
+        if (kickOffTakerTeamName == null)
+            return;
 
         List<Player> kickOffTeamList = kickOffTakerTeamName.equals("Team 1") ? team1 : team2;
         Player kickOffPlayer = kickOffTeamList.stream()
@@ -1045,7 +1315,8 @@ class GamePanel extends JPanel implements Runnable {
                 .findFirst()
                 .orElse(kickOffTeamList.isEmpty() ? null : kickOffTeamList.get(0));
 
-        if (kickOffPlayer == null) return;
+        if (kickOffPlayer == null)
+            return;
 
         if (kickOffTakerTeamName.equals("Team 1")) {
             Player currentHuman = team1.stream().filter(p -> !(p instanceof AIPlayer)).findFirst().orElse(null);
@@ -1054,13 +1325,14 @@ class GamePanel extends JPanel implements Runnable {
                 kickOffPlayer = team1.stream().filter(p -> !(p instanceof AIPlayer)).findFirst().orElse(null);
             }
         }
-        
-        if (kickOffPlayer == null) return;
+
+        if (kickOffPlayer == null)
+            return;
 
         double centerX = PLAYABLE_X + PLAYABLE_WIDTH / 2.0;
         double centerY = PLAYABLE_Y + PLAYABLE_HEIGHT / 2.0;
         kickOffPlayer.setPosition(centerX - kickOffPlayer.size / 2.0, centerY - kickOffPlayer.size / 2.0);
-        
+
         if (kickOffPlayer.getTeam().equals("Team 1")) {
             kickOffPlayer.setDirection(-1, 0);
         } else {
@@ -1074,10 +1346,13 @@ class GamePanel extends JPanel implements Runnable {
     }
 
     private void setFormation(List<Player> team, int side) {
-        if (team == null || team.isEmpty()) return;
+        if (team == null || team.isEmpty())
+            return;
         double xBase = (side == 1) ? PLAYABLE_X + PLAYABLE_WIDTH / 4.0 : PLAYABLE_X + 3 * PLAYABLE_WIDTH / 4.0;
-        List<Player> defenders = team.stream().filter(p -> p.getRole() == Player.PlayerRole.DEFENDER).collect(Collectors.toList());
-        List<Player> midfielders = team.stream().filter(p -> p.getRole() == Player.PlayerRole.MIDFIELDER).collect(Collectors.toList());
+        List<Player> defenders = team.stream().filter(p -> p.getRole() == Player.PlayerRole.DEFENDER)
+                .collect(Collectors.toList());
+        List<Player> midfielders = team.stream().filter(p -> p.getRole() == Player.PlayerRole.MIDFIELDER)
+                .collect(Collectors.toList());
         for (Player p : team) {
             double homeX = 0, homeY = 0;
             switch (p.getRole()) {
@@ -1087,11 +1362,13 @@ class GamePanel extends JPanel implements Runnable {
                     break;
                 case DEFENDER:
                     homeX = xBase - (side == 1 ? 100 : -100);
-                    homeY = PLAYABLE_Y + ((defenders.indexOf(p) == 0) ? PLAYABLE_HEIGHT / 4.0 : 3 * PLAYABLE_HEIGHT / 4.0);
+                    homeY = PLAYABLE_Y
+                            + ((defenders.indexOf(p) == 0) ? PLAYABLE_HEIGHT / 4.0 : 3 * PLAYABLE_HEIGHT / 4.0);
                     break;
                 case MIDFIELDER:
                     homeX = xBase;
-                    homeY = PLAYABLE_Y + ((midfielders.indexOf(p) == 0) ? PLAYABLE_HEIGHT / 4.0 + 40 : 3 * PLAYABLE_HEIGHT / 4.0 - 40);
+                    homeY = PLAYABLE_Y + ((midfielders.indexOf(p) == 0) ? PLAYABLE_HEIGHT / 4.0 + 40
+                            : 3 * PLAYABLE_HEIGHT / 4.0 - 40);
                     break;
                 case STRIKER:
                     homeX = xBase + (side == 1 ? 120 : -120);
@@ -1106,9 +1383,13 @@ class GamePanel extends JPanel implements Runnable {
     }
 
     public void switchControlToPlayer(Player newHumanController) {
-        if (!(newHumanController instanceof AIPlayer)) { return; }
+        if (!(newHumanController instanceof AIPlayer)) {
+            return;
+        }
         Player currentHuman = team1.stream().filter(p -> !(p instanceof AIPlayer)).findFirst().orElse(null);
-        if (currentHuman == null || newHumanController == currentHuman) { return; }
+        if (currentHuman == null || newHumanController == currentHuman) {
+            return;
+        }
 
         AIPlayer targetAI = (AIPlayer) newHumanController;
 
@@ -1134,7 +1415,7 @@ class GamePanel extends JPanel implements Runnable {
             allPlayers.set(aiIndexInAll, newHuman);
         }
     }
-    
+
     public void transitionToRunningState() {
         if (this.gameState == GameState.KICK_OFF) {
             this.gameState = GameState.RUNNING;
@@ -1162,16 +1443,28 @@ class GamePanel extends JPanel implements Runnable {
         return this.soundPlayer;
     }
 
-    public Ball getBall() { return ball; }
-    public List<Player> getTeam(String teamName) { return teamName.equals("Team 1") ? team1 : team2; }
-    private boolean isGameOver() { return remainingSeconds <= 0; }
-    public GameState getGameState() { return gameState; }
+    public Ball getBall() {
+        return ball;
+    }
+
+    public List<Player> getTeam(String teamName) {
+        return teamName.equals("Team 1") ? team1 : team2;
+    }
+
+    private boolean isGameOver() {
+        return remainingSeconds <= 0;
+    }
+
+    public GameState getGameState() {
+        return gameState;
+    }
 
     private void showGameOverDialog() {
         SwingUtilities.invokeLater(() -> {
             if (scoreTeam1 == scoreTeam2) {
                 javax.swing.Timer timer = new javax.swing.Timer(2000, e -> {
-                    CustomMessageDialog dialog = new CustomMessageDialog(parentFrame, "Shootout", "Penalty Shootout Starts Now");
+                    CustomMessageDialog dialog = new CustomMessageDialog(parentFrame, "Shootout",
+                            "Penalty Shootout Starts Now");
                     dialog.setVisible(true);
 
                     startPenaltyShootout();
@@ -1186,7 +1479,8 @@ class GamePanel extends JPanel implements Runnable {
 
             String line1;
             java.util.function.Function<Team, String> formatName = t -> {
-                if (t == null) return "Unknown";
+                if (t == null)
+                    return "Unknown";
                 String name = t.name().toLowerCase();
                 return Character.toUpperCase(name.charAt(0)) + name.substring(1);
             };
@@ -1196,7 +1490,7 @@ class GamePanel extends JPanel implements Runnable {
             } else {
                 line1 = formatName.apply(aiTeam) + " Wins!";
             }
-            
+
             String userAbbr = (userTeam != null) ? userTeam.getAbbreviation() : "USER";
             String aiAbbr = (aiTeam != null) ? aiTeam.getAbbreviation() : "AI";
             String line2 = "Final Score: " + userAbbr + " " + scoreTeam1 + " - " + scoreTeam2 + " " + aiAbbr;
@@ -1209,22 +1503,22 @@ class GamePanel extends JPanel implements Runnable {
     private void startPenaltyShootout() {
         gameState = GameState.PENALTY_SHOOTOUT;
         penaltyState = PenaltyState.AIMING;
-        isUserTurnToShoot = true; 
-        running = true; 
+        isUserTurnToShoot = true;
+        running = true;
 
         team1.stream()
-            .filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER)
-            .findFirst()
-            .ifPresent(gk -> gk.setSprite(userGkPenaltySprite));
+                .filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER)
+                .findFirst()
+                .ifPresent(gk -> gk.setSprite(userGkPenaltySprite));
 
         resetForPenaltyKick();
         if (gameThread == null || !gameThread.isAlive()) {
-             gameThread = new Thread(this);
-             gameThread.start();
+            gameThread = new Thread(this);
+            gameThread.start();
         }
         requestFocusInWindow();
     }
-    
+
     private void updatePenaltyShootout() {
         ball.move();
         penaltyKicker.move();
@@ -1234,9 +1528,9 @@ class GamePanel extends JPanel implements Runnable {
             double goalTop = PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0;
             double goalBottom = PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0;
             double goalLineX = PLAYABLE_X + PLAYABLE_WIDTH - PLAYER_SIZE - 5;
-    
+
             penaltyGoalkeeper.x = goalLineX;
-    
+
             if (penaltyGoalkeeper.y < goalTop) {
                 penaltyGoalkeeper.y = goalTop;
                 penaltyGoalkeeper.setVelY(0);
@@ -1245,31 +1539,31 @@ class GamePanel extends JPanel implements Runnable {
                 penaltyGoalkeeper.setVelY(0);
             }
         }
-    
+
         if (ball.y <= PLAYABLE_Y || ball.y >= (PLAYABLE_Y + PLAYABLE_HEIGHT) - ball.size) {
             ball.velY *= -1;
             ball.y = Math.max(PLAYABLE_Y, Math.min(ball.y, (PLAYABLE_Y + PLAYABLE_HEIGHT) - ball.size));
         }
-    
+
         List<Player> penaltyPlayers = new ArrayList<>();
         penaltyPlayers.add(penaltyKicker);
         penaltyPlayers.add(penaltyGoalkeeper);
         penaltyGoalkeeper.checkCollisions(ball, penaltyPlayers);
-    
+
         if (penaltyState == PenaltyState.KICKING) {
             int goalHeight = 100;
             double goalTop = PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0;
             double goalBottom = PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2.0;
-    
+
             boolean goalScored = ball.x + ball.size >= (PLAYABLE_X + PLAYABLE_WIDTH) &&
-                                 ball.getCenterY() > goalTop && ball.getCenterY() < goalBottom;
-    
+                    ball.getCenterY() > goalTop && ball.getCenterY() < goalBottom;
+
             if (goalScored && ball.getDribbler() == null) {
                 handlePenaltyGoal();
                 return;
             }
         }
-    
+
         if (penaltyState == PenaltyState.AIMING) {
             if (!isUserTurnToShoot) {
                 if (System.currentTimeMillis() - penaltyMessageStartTime > 1500) {
@@ -1293,42 +1587,47 @@ class GamePanel extends JPanel implements Runnable {
             }
         }
     }
+
     private void resetForPenaltyKick() {
         Player currentDribbler = ball.getDribbler();
         if (currentDribbler != null) {
             currentDribbler.losePossession(ball);
         }
-        
+
         ball.setVelocity(0, 0);
         ball.setDribbler(null);
 
         if (isUserTurnToShoot) {
             penaltyKicker = team1.stream().filter(p -> p.getRole() == Player.PlayerRole.STRIKER).findFirst().get();
-            penaltyGoalkeeper = team2.stream().filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER).findFirst().get();
+            penaltyGoalkeeper = team2.stream().filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER).findFirst()
+                    .get();
         } else {
             penaltyKicker = team2.stream().filter(p -> p.getRole() == Player.PlayerRole.STRIKER).findFirst().get();
-            penaltyGoalkeeper = team1.stream().filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER).findFirst().get();
+            penaltyGoalkeeper = team1.stream().filter(p -> p.getRole() == Player.PlayerRole.GOALKEEPER).findFirst()
+                    .get();
         }
-        
+
         double penaltySpotX = PLAYABLE_X + PLAYABLE_WIDTH - 150;
         double penaltySpotY = PLAYABLE_Y + PLAYABLE_HEIGHT / 2.0;
 
         ball.setPosition(penaltySpotX - ball.size / 2.0, penaltySpotY - ball.size / 2.0);
-        
+
         penaltyKicker.setDirection(1, 0);
         penaltyKicker.setPosition(penaltySpotX - PLAYER_SIZE - 10, penaltySpotY - PLAYER_SIZE / 2.0);
-        
+
         double gkX = PLAYABLE_X + PLAYABLE_WIDTH - PLAYER_SIZE - 5;
         double gkY = PLAYABLE_Y + PLAYABLE_HEIGHT / 2.0 - PLAYER_SIZE / 2.0;
         penaltyGoalkeeper.setPosition(gkX, gkY);
-        
-        penaltyKicker.setVelX(0); penaltyKicker.setVelY(0);
-        penaltyGoalkeeper.setVelX(0); penaltyGoalkeeper.setVelY(0);
+
+        penaltyKicker.setVelX(0);
+        penaltyKicker.setVelY(0);
+        penaltyGoalkeeper.setVelX(0);
+        penaltyGoalkeeper.setVelY(0);
 
         penaltyState = PenaltyState.AIMING;
         shotDirection = ShotDirection.CENTER;
         userDiveDirection = ShotDirection.CENTER;
-        penaltyMessageStartTime = System.currentTimeMillis(); 
+        penaltyMessageStartTime = System.currentTimeMillis();
     }
 
     private void shootTheBall() {
@@ -1337,24 +1636,31 @@ class GamePanel extends JPanel implements Runnable {
         int goalHeight = 100;
         int goalTop = PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2;
         int goalBottom = goalTop + goalHeight;
-        
-        switch(shotDirection) {
-            case LEFT: targetY = goalTop + goalHeight * 0.25; break;
-            case RIGHT: targetY = goalBottom - goalHeight * 0.25; break;
-            case CENTER: default: targetY = (goalTop + goalBottom) / 2.0; break;
+
+        switch (shotDirection) {
+            case LEFT:
+                targetY = goalTop + goalHeight * 0.25;
+                break;
+            case RIGHT:
+                targetY = goalBottom - goalHeight * 0.25;
+                break;
+            case CENTER:
+            default:
+                targetY = (goalTop + goalBottom) / 2.0;
+                break;
         }
 
         double targetX = PLAYABLE_X + PLAYABLE_WIDTH;
         double dirX = targetX - ball.getCenterX();
         double dirY = targetY - ball.getCenterY();
         double mag = Math.sqrt(dirX * dirX + dirY * dirY);
-        ball.setVelocity((dirX/mag) * 15.0, (dirY/mag) * 15.0);
+        ball.setVelocity((dirX / mag) * 15.0, (dirY / mag) * 15.0);
     }
 
     private void goalkeeperDive(ShotDirection diveDirection) {
         double diveDistance = 10.0;
         penaltyGoalkeeper.setVelY(0);
-    
+
         switch (diveDirection) {
             case LEFT:
                 penaltyGoalkeeper.y -= diveDistance;
@@ -1366,13 +1672,13 @@ class GamePanel extends JPanel implements Runnable {
                 break;
         }
     }
-    
+
     private void handlePenaltyResult() {
         penaltyState = PenaltyState.RESULT;
         penaltyMessageStartTime = System.currentTimeMillis();
-    
+
         boolean saved = ball.getDribbler() == penaltyGoalkeeper;
-    
+
         if (saved) {
             penaltyMessage = "SAVED!";
             soundPlayer.playSaveSound();
@@ -1395,38 +1701,45 @@ class GamePanel extends JPanel implements Runnable {
         }
         ball.setVelocity(0, 0);
     }
-    
+
     private void nextPenaltyTaker() {
-        if(isUserTurnToShoot) penaltyKicksTeam1++; else penaltyKicksTeam2++;
+        if (isUserTurnToShoot)
+            penaltyKicksTeam1++;
+        else
+            penaltyKicksTeam2++;
         isUserTurnToShoot = !isUserTurnToShoot;
         penaltyMessage = "";
         resetForPenaltyKick();
     }
-    
+
     private boolean checkPenaltyWinCondition() {
         if (penaltyKicksTeam1 < 5 || penaltyKicksTeam2 < 5) {
             int remaining1 = 5 - penaltyKicksTeam1;
             int remaining2 = 5 - penaltyKicksTeam2;
-            if (penaltyScoreTeam1 > penaltyScoreTeam2 + remaining2) return true;
-            if (penaltyScoreTeam2 > penaltyScoreTeam1 + remaining1) return true;
+            if (penaltyScoreTeam1 > penaltyScoreTeam2 + remaining2)
+                return true;
+            if (penaltyScoreTeam2 > penaltyScoreTeam1 + remaining1)
+                return true;
         } else {
             if (penaltyKicksTeam1 == penaltyKicksTeam2 && penaltyScoreTeam1 != penaltyScoreTeam2) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
-     private void showPenaltyEndDialog() {
+    private void showPenaltyEndDialog() {
         running = false;
         SwingUtilities.invokeLater(() -> {
-            MatchResult result = new MatchResult(userTeam.name(), scoreTeam1, aiTeam.name(), scoreTeam2, true, penaltyScoreTeam1, penaltyScoreTeam2);
+            MatchResult result = new MatchResult(userTeam.name(), scoreTeam1, aiTeam.name(), scoreTeam2, true,
+                    penaltyScoreTeam1, penaltyScoreTeam2);
             matchHistory.addResult(result);
 
             String line1;
             java.util.function.Function<Team, String> formatName = t -> {
-                if (t == null) return "Unknown";
+                if (t == null)
+                    return "Unknown";
                 String name = t.name().toLowerCase();
                 return Character.toUpperCase(name.charAt(0)) + name.substring(1);
             };
@@ -1438,7 +1751,8 @@ class GamePanel extends JPanel implements Runnable {
             }
             String line2 = "Penalty Score: " + penaltyScoreTeam1 + " - " + penaltyScoreTeam2;
 
-            CustomGameOverDialog dialog = new CustomGameOverDialog(parentFrame, "Shootout Over", line1, line2, onGameEnd);
+            CustomGameOverDialog dialog = new CustomGameOverDialog(parentFrame, "Shootout Over", line1, line2,
+                    onGameEnd);
             dialog.setVisible(true);
         });
     }
@@ -1447,37 +1761,103 @@ class GamePanel extends JPanel implements Runnable {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
-        if (fieldImage != null) {
-            g2d.drawImage(fieldImage, 0, 0, getWidth(), getHeight(), this);
-        }
+
+        int currentW = getWidth();
+        int currentH = getHeight();
+        if (currentW <= 0 || currentH <= 0)
+            return;
+
+        AffineTransform oldTransform = g2d.getTransform();
+
+        double scaleX = (double) currentW / WIDTH;
+        double scaleY = (double) currentH / HEIGHT;
+
+        g2d.scale(scaleX, scaleY);
+
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        if (fieldImage != null) {
+            g2d.drawImage(fieldImage, 0, 0, WIDTH, HEIGHT, this);
+        } else {
+            g2d.setColor(new Color(28, 120, 28));
+            g2d.fillRect(0, 0, WIDTH, HEIGHT);
+            g2d.setColor(Color.WHITE);
+            g2d.setStroke(new BasicStroke(3));
+            g2d.drawRect(PLAYABLE_X, PLAYABLE_Y, PLAYABLE_WIDTH, PLAYABLE_HEIGHT);
+            g2d.drawLine(PLAYABLE_X + PLAYABLE_WIDTH / 2, PLAYABLE_Y, PLAYABLE_X + PLAYABLE_WIDTH / 2,
+                    PLAYABLE_Y + PLAYABLE_HEIGHT);
+            g2d.drawOval(PLAYABLE_X + PLAYABLE_WIDTH / 2 - 70, PLAYABLE_Y + PLAYABLE_HEIGHT / 2 - 70, 140, 140);
+        }
+
         drawGoals(g2d);
 
         if (gameState == GameState.PENALTY_SHOOTOUT) {
-             penaltyKicker.draw(g2d);
-             penaltyGoalkeeper.draw(g2d);
-             ball.draw(g2d);
+            if (penaltyKicker != null)
+                penaltyKicker.draw(g2d);
+            if (penaltyGoalkeeper != null)
+                penaltyGoalkeeper.draw(g2d);
+            if (ball != null)
+                ball.draw(g2d);
         } else {
-            if (allPlayers != null) allPlayers.forEach(p -> p.draw(g2d));
-            if (ball != null) ball.draw(g2d);
+            if (allPlayers != null)
+                allPlayers.forEach(p -> p.draw(g2d));
+            if (ball != null)
+                ball.draw(g2d);
         }
-        
+
         drawUI(g2d);
 
         if (paused) {
-            g2d.setColor(new Color(0, 0, 0, 128));
-            g2d.fillRect(0, 0, getWidth(), getHeight());
+            g2d.setColor(new Color(0, 0, 0, 140));
+            g2d.fillRect(0, 0, WIDTH, HEIGHT);
         }
+
+        g2d.setTransform(oldTransform);
         pauseMenuPanel.setVisible(paused);
     }
 
     private void drawGoals(Graphics2D g2d) {
         int goalHeight = 100;
+        double goalTop = PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2.0;
+        double goalBottom = goalTop + goalHeight;
+
+        // White Goal Lines on touchlines
         g2d.setColor(Color.WHITE);
-        g2d.setStroke(new BasicStroke(3));
-        g2d.drawLine(PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2-10, PLAYABLE_X, PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2-10);
-        g2d.drawLine(PLAYABLE_X + PLAYABLE_WIDTH, PLAYABLE_Y + (PLAYABLE_HEIGHT - goalHeight) / 2-10, PLAYABLE_X + PLAYABLE_WIDTH, PLAYABLE_Y + (PLAYABLE_HEIGHT + goalHeight) / 2-10);
+        g2d.setStroke(new BasicStroke(4));
+        g2d.draw(new Line2D.Double(PLAYABLE_X, goalTop, PLAYABLE_X, goalBottom));
+        g2d.draw(new Line2D.Double(PLAYABLE_X + PLAYABLE_WIDTH, goalTop, PLAYABLE_X + PLAYABLE_WIDTH, goalBottom));
+
+        // Goal Nets and Post Frames behind the goal lines
+        int netDepth = 22;
+        g2d.setColor(new Color(255, 255, 255, 140));
+        g2d.setStroke(new BasicStroke(2));
+
+        // Left Goal Net
+        g2d.drawRect(PLAYABLE_X - netDepth, (int) goalTop, netDepth, goalHeight);
+        for (int y = (int) goalTop + 20; y < (int) goalBottom; y += 20) {
+            g2d.drawLine(PLAYABLE_X - netDepth, y, PLAYABLE_X, y);
+        }
+        for (int x = PLAYABLE_X - netDepth + 7; x < PLAYABLE_X; x += 7) {
+            g2d.drawLine(x, (int) goalTop, x, (int) goalBottom);
+        }
+
+        // Right Goal Net
+        g2d.drawRect(PLAYABLE_X + PLAYABLE_WIDTH, (int) goalTop, netDepth, goalHeight);
+        for (int y = (int) goalTop + 20; y < (int) goalBottom; y += 20) {
+            g2d.drawLine(PLAYABLE_X + PLAYABLE_WIDTH, y, PLAYABLE_X + PLAYABLE_WIDTH + netDepth, y);
+        }
+        for (int x = PLAYABLE_X + PLAYABLE_WIDTH + 7; x < PLAYABLE_X + PLAYABLE_WIDTH + netDepth; x += 7) {
+            g2d.drawLine(x, (int) goalTop, x, (int) goalBottom);
+        }
+
+        // Distinct White Goal Posts (Top & Bottom on both sides)
+        g2d.setColor(Color.WHITE);
+        g2d.fillOval(PLAYABLE_X - 4, (int) goalTop - 4, 8, 8);
+        g2d.fillOval(PLAYABLE_X - 4, (int) goalBottom - 4, 8, 8);
+        g2d.fillOval(PLAYABLE_X + PLAYABLE_WIDTH - 4, (int) goalTop - 4, 8, 8);
+        g2d.fillOval(PLAYABLE_X + PLAYABLE_WIDTH - 4, (int) goalBottom - 4, 8, 8);
     }
 
     private void drawUI(Graphics2D g2d) {
@@ -1486,7 +1866,7 @@ class GamePanel extends JPanel implements Runnable {
         }
 
         int boxX = 10, boxY = 10, boxWidth = 150, boxHeight = 50, cornerRadius = 10;
-        
+
         int totalBoxHeight = boxHeight;
         if (gameState == GameState.PENALTY_SHOOTOUT) {
             totalBoxHeight += 25;
@@ -1506,23 +1886,23 @@ class GamePanel extends JPanel implements Runnable {
         FontMetrics fmScore = g2d.getFontMetrics();
         int scoreTextWidth = fmScore.stringWidth(scoreText);
         g2d.drawString(scoreText, boxX + (boxWidth - scoreTextWidth) / 2, boxY + fmScore.getAscent() + 5);
-        
+
         if (gameState == GameState.PENALTY_SHOOTOUT) {
-             String penaltyScoreText = String.format("(%d - %d)", penaltyScoreTeam1, penaltyScoreTeam2);
-             g2d.setFont(new Font("Consolas", Font.PLAIN, 22));
-             FontMetrics fmPenalty = g2d.getFontMetrics();
-             int penaltyTextWidth = fmPenalty.stringWidth(penaltyScoreText);
-             g2d.drawString(penaltyScoreText, boxX + (boxWidth - penaltyTextWidth) / 2, boxY + boxHeight + 10);
+            String penaltyScoreText = String.format("(%d - %d)", penaltyScoreTeam1, penaltyScoreTeam2);
+            g2d.setFont(new Font("Consolas", Font.PLAIN, 22));
+            FontMetrics fmPenalty = g2d.getFontMetrics();
+            int penaltyTextWidth = fmPenalty.stringWidth(penaltyScoreText);
+            g2d.drawString(penaltyScoreText, boxX + (boxWidth - penaltyTextWidth) / 2, boxY + boxHeight + 10);
         } else {
-             int minutes = Math.max(0, remainingSeconds) / 60;
-             int seconds = Math.max(0, remainingSeconds) % 60;
-             String timeText = String.format("%02d:%02d", minutes, seconds);
-             g2d.setFont(new Font("Consolas", Font.PLAIN, 22));
-             FontMetrics fmTime = g2d.getFontMetrics();
-             int timeTextWidth = fmTime.stringWidth(timeText);
-             g2d.drawString(timeText, boxX + (boxWidth - timeTextWidth) / 2, boxY + boxHeight - 5);
+            int minutes = Math.max(0, remainingSeconds) / 60;
+            int seconds = Math.max(0, remainingSeconds) % 60;
+            String timeText = String.format("%02d:%02d", minutes, seconds);
+            g2d.setFont(new Font("Consolas", Font.PLAIN, 22));
+            FontMetrics fmTime = g2d.getFontMetrics();
+            int timeTextWidth = fmTime.stringWidth(timeText);
+            g2d.drawString(timeText, boxX + (boxWidth - timeTextWidth) / 2, boxY + boxHeight - 5);
         }
-        
+
         if (System.currentTimeMillis() - goalMessageStartTime < 3000) {
             String goalText = "GOAL!!!";
             g2d.setFont(new Font("Arial", Font.BOLD, 40));
@@ -1533,7 +1913,7 @@ class GamePanel extends JPanel implements Runnable {
             g2d.setColor(Color.YELLOW);
             g2d.drawString(goalText, goalX, goalY);
         }
-        
+
         if (gameState == GameState.PENALTY_SHOOTOUT && penaltyState == PenaltyState.AIMING) {
             String instructionText;
             ShotDirection indicatorDirection;
@@ -1557,19 +1937,28 @@ class GamePanel extends JPanel implements Runnable {
             int goalCenterY = PLAYABLE_Y + PLAYABLE_HEIGHT / 2;
             int goalPostHeight = 50;
 
-            switch(indicatorDirection){
-                case LEFT: indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH); indicatorY = goalCenterY - goalPostHeight; break;
-                case CENTER: indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH); indicatorY = goalCenterY; break;
-                case RIGHT: indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH); indicatorY = goalCenterY + goalPostHeight; break;
+            switch (indicatorDirection) {
+                case LEFT:
+                    indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH);
+                    indicatorY = goalCenterY - goalPostHeight;
+                    break;
+                case CENTER:
+                    indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH);
+                    indicatorY = goalCenterY;
+                    break;
+                case RIGHT:
+                    indicatorX = (int) (PLAYABLE_X + PLAYABLE_WIDTH);
+                    indicatorY = goalCenterY + goalPostHeight;
+                    break;
             }
-            g2d.fillOval(indicatorX-10, indicatorY-10, 20, 20);
+            g2d.fillOval(indicatorX - 10, indicatorY - 10, 20, 20);
 
         } else if (penaltyState == PenaltyState.RESULT && !penaltyMessage.isEmpty()) {
-             g2d.setFont(new Font("Arial", Font.BOLD, 60));
-             FontMetrics fm = g2d.getFontMetrics();
-             int textWidth = fm.stringWidth(penaltyMessage);
-             g2d.setColor(penaltyMessage.equals("GOAL!") ? Color.GREEN : Color.RED);
-             g2d.drawString(penaltyMessage, (WIDTH - textWidth) / 2, HEIGHT / 2);
+            g2d.setFont(new Font("Arial", Font.BOLD, 60));
+            FontMetrics fm = g2d.getFontMetrics();
+            int textWidth = fm.stringWidth(penaltyMessage);
+            g2d.setColor(penaltyMessage.equals("GOAL!") ? Color.GREEN : Color.RED);
+            g2d.drawString(penaltyMessage, (WIDTH - textWidth) / 2, HEIGHT / 2);
         }
     }
 
@@ -1577,45 +1966,70 @@ class GamePanel extends JPanel implements Runnable {
         @Override
         public void keyPressed(KeyEvent e) {
             int key = e.getKeyCode();
+            if (key == KeyEvent.VK_ESCAPE || key == KeyEvent.VK_P) {
+                if (paused) {
+                    resumeGame();
+                } else {
+                    pauseGame();
+                }
+                return;
+            }
             if (gameState == GameState.PENALTY_SHOOTOUT && penaltyState == PenaltyState.AIMING) {
                 if (isUserTurnToShoot) {
-                    if (key == KeyEvent.VK_LEFT) shotDirection = ShotDirection.LEFT;
-                    if (key == KeyEvent.VK_RIGHT) shotDirection = ShotDirection.RIGHT;
-                    if (key == KeyEvent.VK_UP) shotDirection = ShotDirection.CENTER;
+                    if (key == KeyEvent.VK_LEFT)
+                        shotDirection = ShotDirection.LEFT;
+                    if (key == KeyEvent.VK_RIGHT)
+                        shotDirection = ShotDirection.RIGHT;
+                    if (key == KeyEvent.VK_UP)
+                        shotDirection = ShotDirection.CENTER;
                     if (key == KeyEvent.VK_SHIFT) {
                         penaltyState = PenaltyState.KICKING;
                         shootTheBall();
                         goalkeeperDive(ShotDirection.values()[random.nextInt(3)]);
                     }
                 } else {
-                    if (key == KeyEvent.VK_LEFT) userDiveDirection = ShotDirection.LEFT;
-                    if (key == KeyEvent.VK_RIGHT) userDiveDirection = ShotDirection.RIGHT;
-                    if (key == KeyEvent.VK_UP) userDiveDirection = ShotDirection.CENTER;
+                    if (key == KeyEvent.VK_LEFT)
+                        userDiveDirection = ShotDirection.LEFT;
+                    if (key == KeyEvent.VK_RIGHT)
+                        userDiveDirection = ShotDirection.RIGHT;
+                    if (key == KeyEvent.VK_UP)
+                        userDiveDirection = ShotDirection.CENTER;
                 }
                 return;
             }
 
-            if (team1 == null || paused) return;
+            if (team1 == null || paused)
+                return;
             Player humanPlayer1 = team1.stream().filter(p -> !(p instanceof AIPlayer)).findFirst().orElse(null);
             if (humanPlayer1 != null) {
-                if (key == KeyEvent.VK_UP) humanPlayer1.setVelY(-USER_SPEED);
-                if (key == KeyEvent.VK_DOWN) humanPlayer1.setVelY(USER_SPEED);
-                if (key == KeyEvent.VK_LEFT) humanPlayer1.setVelX(-USER_SPEED);
-                if (key == KeyEvent.VK_RIGHT) humanPlayer1.setVelX(USER_SPEED);
-                if (key == KeyEvent.VK_SHIFT && humanPlayer1.isDribbling()) humanPlayer1.shoot();
-                if (key == KeyEvent.VK_CONTROL && humanPlayer1.isDribbling()) humanPlayer1.pass();
+                if (key == KeyEvent.VK_UP)
+                    humanPlayer1.setVelY(-USER_SPEED);
+                if (key == KeyEvent.VK_DOWN)
+                    humanPlayer1.setVelY(USER_SPEED);
+                if (key == KeyEvent.VK_LEFT)
+                    humanPlayer1.setVelX(-USER_SPEED);
+                if (key == KeyEvent.VK_RIGHT)
+                    humanPlayer1.setVelX(USER_SPEED);
+                if (key == KeyEvent.VK_SHIFT && humanPlayer1.isDribbling())
+                    humanPlayer1.shoot();
+                if (key == KeyEvent.VK_CONTROL && humanPlayer1.isDribbling())
+                    humanPlayer1.pass();
             }
         }
 
         @Override
         public void keyReleased(KeyEvent e) {
             int key = e.getKeyCode();
-            if (gameState == GameState.PENALTY_SHOOTOUT || paused) return;
-            if (team1 == null) return;
+            if (gameState == GameState.PENALTY_SHOOTOUT || paused)
+                return;
+            if (team1 == null)
+                return;
             Player humanPlayer1 = team1.stream().filter(p -> !(p instanceof AIPlayer)).findFirst().orElse(null);
             if (humanPlayer1 != null) {
-                if (key == KeyEvent.VK_UP || key == KeyEvent.VK_DOWN) humanPlayer1.setVelY(0);
-                if (key == KeyEvent.VK_LEFT || key == KeyEvent.VK_RIGHT) humanPlayer1.setVelX(0);
+                if (key == KeyEvent.VK_UP || key == KeyEvent.VK_DOWN)
+                    humanPlayer1.setVelY(0);
+                if (key == KeyEvent.VK_LEFT || key == KeyEvent.VK_RIGHT)
+                    humanPlayer1.setVelX(0);
             }
         }
     }
@@ -1624,18 +2038,49 @@ class GamePanel extends JPanel implements Runnable {
 abstract class GameObject {
     protected double x, y, velX, velY;
     protected int size;
-    public GameObject(double x, double y, int size) { this.x = x; this.y = y; this.size = size; }
-    public abstract void draw(Graphics2D g2d);
-    public Rectangle2D.Double getBounds() { return new Rectangle2D.Double(x, y, size, size); }
-    public void setPosition(double x, double y) { this.x = x; this.y = y; }
-    public double getCenterX() { return x + size / 2.0; }
-    public double getCenterY() { return y + size / 2.0; }
-    public double distanceTo(GameObject other) {
-        return Math.sqrt(Math.pow(this.getCenterX() - other.getCenterX(), 2) + Math.pow(this.getCenterY() - other.getCenterY(), 2));
+
+    public GameObject(double x, double y, int size) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
     }
-    public void setVelocity(double vx, double vy) { this.velX = vx; this.velY = vy; }
-    public void setVelX(double velX) { this.velX = velX; }
-    public void setVelY(double velY) { this.velY = velY; }
+
+    public abstract void draw(Graphics2D g2d);
+
+    public Rectangle2D.Double getBounds() {
+        return new Rectangle2D.Double(x, y, size, size);
+    }
+
+    public void setPosition(double x, double y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public double getCenterX() {
+        return x + size / 2.0;
+    }
+
+    public double getCenterY() {
+        return y + size / 2.0;
+    }
+
+    public double distanceTo(GameObject other) {
+        return Math.sqrt(Math.pow(this.getCenterX() - other.getCenterX(), 2)
+                + Math.pow(this.getCenterY() - other.getCenterY(), 2));
+    }
+
+    public void setVelocity(double vx, double vy) {
+        this.velX = vx;
+        this.velY = vy;
+    }
+
+    public void setVelX(double velX) {
+        this.velX = velX;
+    }
+
+    public void setVelY(double velY) {
+        this.velY = velY;
+    }
 }
 
 class Ball extends GameObject {
@@ -1643,7 +2088,12 @@ class Ball extends GameObject {
     private Player dribbler;
     private final BufferedImage sprite;
     private double rotationAngle = 0;
-    public Ball(double x, double y, int size, BufferedImage sprite) { super(x, y, size); this.sprite = sprite; }
+
+    public Ball(double x, double y, int size, BufferedImage sprite) {
+        super(x, y, size);
+        this.sprite = sprite;
+    }
+
     public void move() {
         if (dribbler == null) {
             x += velX;
@@ -1653,20 +2103,33 @@ class Ball extends GameObject {
             rotationAngle += Math.sqrt(velX * velX + velY * velY) * 0.1;
         }
     }
+
     public void checkWallCollision(int minX, int maxX, int minY, int maxY) {
-        if (x <= minX || x >= maxX - size) { velX *= -1; x = Math.max(minX, Math.min(x, maxX - size)); }
-        if (y <= minY || y >= maxY - size) { velY *= -1; y = Math.max(minY, Math.min(y, maxY - size)); }
+        if (x <= minX || x >= maxX - size) {
+            velX *= -1;
+            x = Math.max(minX, Math.min(x, maxX - size));
+        }
+        if (y <= minY || y >= maxY - size) {
+            velY *= -1;
+            y = Math.max(minY, Math.min(y, maxY - size));
+        }
     }
-    
-    public Player getDribbler() { return dribbler; }
-    public void setDribbler(Player dribbler) { this.dribbler = dribbler; }
+
+    public Player getDribbler() {
+        return dribbler;
+    }
+
+    public void setDribbler(Player dribbler) {
+        this.dribbler = dribbler;
+    }
+
     @Override
     public void draw(Graphics2D g2d) {
         if (sprite != null) {
             AffineTransform old = g2d.getTransform();
             g2d.translate(getCenterX(), getCenterY());
             g2d.rotate(rotationAngle);
-            g2d.drawImage(sprite, -size/2, -size/2, size, size, null);
+            g2d.drawImage(sprite, -size / 2, -size / 2, size, size, null);
             g2d.setTransform(old);
         } else {
             g2d.setColor(Color.WHITE);
@@ -1676,7 +2139,10 @@ class Ball extends GameObject {
 }
 
 class Player extends GameObject {
-    public enum PlayerRole { GOALKEEPER, DEFENDER, MIDFIELDER, STRIKER }
+    public enum PlayerRole {
+        GOALKEEPER, DEFENDER, MIDFIELDER, STRIKER
+    }
+
     protected String team;
     protected PlayerRole role;
     protected GamePanel gamePanel;
@@ -1686,13 +2152,18 @@ class Player extends GameObject {
     protected long possessionStartTime = 0;
     protected BufferedImage sprite;
     protected final Color fallbackColor;
-    public Player(double x, double y, int size, BufferedImage sprite, Color fallbackColor, String team, PlayerRole role, GamePanel gamePanel) {
+
+    public Player(double x, double y, int size, BufferedImage sprite, Color fallbackColor, String team, PlayerRole role,
+            GamePanel gamePanel) {
         super(x, y, size);
         this.sprite = sprite;
         this.fallbackColor = fallbackColor;
-        this.team = team; this.role = role; this.gamePanel = gamePanel;
+        this.team = team;
+        this.role = role;
+        this.gamePanel = gamePanel;
         this.lastDirX = team.equals("Team 1") ? 1 : -1;
     }
+
     public Player(AIPlayer other) {
         super(other.x, other.y, other.size);
         this.sprite = other.sprite;
@@ -1707,20 +2178,21 @@ class Player extends GameObject {
         this.lastDirY = other.lastDirY;
         this.possessionStartTime = other.possessionStartTime;
     }
+
     public void move() {
         x += velX;
         y += velY;
 
         if (gamePanel.getGameState() != GamePanel.GameState.PENALTY_SHOOTOUT) {
-             if (Math.abs(velX) > 0.01 || Math.abs(velY) > 0.01) {
-                 double magnitude = Math.sqrt(velX * velX + velY * velY);
-                 if (magnitude > 0) {
-                     lastDirX = velX / magnitude;
-                     lastDirY = velY / magnitude;
-                 }
-             }
+            if (Math.abs(velX) > 0.01 || Math.abs(velY) > 0.01) {
+                double magnitude = Math.sqrt(velX * velX + velY * velY);
+                if (magnitude > 0) {
+                    lastDirX = velX / magnitude;
+                    lastDirY = velY / magnitude;
+                }
+            }
         }
-        
+
         if (isDribbling) {
             Ball ball = gamePanel.getBall();
             double ballOffset = this.size * 0.6;
@@ -1730,9 +2202,10 @@ class Player extends GameObject {
             ball.setVelocity(0, 0);
         }
     }
-    
+
     public void checkCollisions(Ball ball, List<Player> allPlayers) {
-        checkWallCollision(GamePanel.PLAYABLE_X, GamePanel.PLAYABLE_X + GamePanel.PLAYABLE_WIDTH, GamePanel.PLAYABLE_Y, GamePanel.PLAYABLE_Y + GamePanel.PLAYABLE_HEIGHT);
+        checkWallCollision(GamePanel.PLAYABLE_X, GamePanel.PLAYABLE_X + GamePanel.PLAYABLE_WIDTH, GamePanel.PLAYABLE_Y,
+                GamePanel.PLAYABLE_Y + GamePanel.PLAYABLE_HEIGHT);
         for (Player other : allPlayers) {
             if (this != other && this.getBounds().intersects(other.getBounds())) {
                 resolvePlayerCollision(other);
@@ -1740,7 +2213,8 @@ class Player extends GameObject {
         }
         if (isDribbling) {
             for (Player other : allPlayers) {
-                if (other != this && !other.getTeam().equals(this.team) && this.getBounds().intersects(other.getBounds())) {
+                if (other != this && !other.getTeam().equals(this.team)
+                        && this.getBounds().intersects(other.getBounds())) {
                     double dx = other.getCenterX() - this.getCenterX();
                     double dirX = (lastDirX >= 0) ? 1 : -1;
                     if ((dx > 0 && dirX > 0) || (dx < 0 && dirX < 0)) {
@@ -1754,7 +2228,7 @@ class Player extends GameObject {
             ball.setDribbler(this);
             this.isDribbling = true;
             this.possessionStartTime = System.currentTimeMillis();
-            
+
             if (gamePanel.getGameState() == GamePanel.GameState.RUNNING) {
                 if (this instanceof AIPlayer && this.team.equals("Team 1")) {
                     gamePanel.switchControlToPlayer(this);
@@ -1762,7 +2236,7 @@ class Player extends GameObject {
             }
         }
     }
-    
+
     private void resolvePlayerCollision(Player other) {
         double dx = this.getCenterX() - other.getCenterX();
         double dy = this.getCenterY() - other.getCenterY();
@@ -1771,22 +2245,33 @@ class Player extends GameObject {
         if (overlap > 0) {
             double resolveX = (distance == 0) ? overlap : (dx / distance) * overlap;
             double resolveY = (distance == 0) ? 0 : (dy / distance) * overlap;
-            this.x += resolveX / 2.0; this.y += resolveY / 2.0;
-            other.x -= resolveX / 2.0; other.y -= resolveY / 2.0;
+            this.x += resolveX / 2.0;
+            this.y += resolveY / 2.0;
+            other.x -= resolveX / 2.0;
+            other.y -= resolveY / 2.0;
         }
     }
+
     public void kick(Ball ball, double strength) {
         kickInDirection(ball, ball.getCenterX() - this.getCenterX(), ball.getCenterY() - this.getCenterY(), strength);
     }
+
     private void kickInDirection(Ball ball, double dirX, double dirY, double strength) {
-        double mag = Math.sqrt(dirX*dirX + dirY*dirY);
-        if (mag == 0) return;
+        double mag = Math.sqrt(dirX * dirX + dirY * dirY);
+        if (mag == 0)
+            return;
         ball.setVelocity((dirX / mag) * strength, (dirY / mag) * strength);
     }
-    public void losePossession(Ball ball) { this.isDribbling = false; this.possessionStartTime = 0; ball.setDribbler(null); }
-    
+
+    public void losePossession(Ball ball) {
+        this.isDribbling = false;
+        this.possessionStartTime = 0;
+        ball.setDribbler(null);
+    }
+
     public void shoot() {
-        if (!isDribbling) return;
+        if (!isDribbling)
+            return;
         gamePanel.getSoundPlayer().playShootSound();
         if (gamePanel.getGameState() == GamePanel.GameState.KICK_OFF) {
             gamePanel.transitionToRunningState();
@@ -1797,9 +2282,10 @@ class Player extends GameObject {
         double targetY = GamePanel.PLAYABLE_Y + GamePanel.PLAYABLE_HEIGHT / 2.0;
         kickInDirection(ball, targetX - ball.getCenterX(), targetY - ball.getCenterY(), 13.0);
     }
-    
+
     public void pass() {
-        if (!isDribbling) return;
+        if (!isDribbling)
+            return;
         gamePanel.handlePass(this.team);
         if (gamePanel.getGameState() == GamePanel.GameState.KICK_OFF) {
             gamePanel.transitionToRunningState();
@@ -1811,22 +2297,24 @@ class Player extends GameObject {
         final double forwardVecY = this.lastDirY;
 
         Player bestTeammate = gamePanel.getTeam(this.team).stream()
-            .filter(p -> p != this && p.getRole() != PlayerRole.GOALKEEPER)
-            .filter(teammate -> {
-                double toTeammateVecX = teammate.getCenterX() - this.getCenterX();
-                double toTeammateVecY = teammate.getCenterY() - this.getCenterY();
-                double dotProduct = (forwardVecX * toTeammateVecX) + (forwardVecY * toTeammateVecY);
-                return dotProduct > 0;
-            })
-            .min(Comparator.comparingDouble(p -> p.distanceTo(this)))
-            .orElse(null);
+                .filter(p -> p != this && p.getRole() != PlayerRole.GOALKEEPER)
+                .filter(teammate -> {
+                    double toTeammateVecX = teammate.getCenterX() - this.getCenterX();
+                    double toTeammateVecY = teammate.getCenterY() - this.getCenterY();
+                    double dotProduct = (forwardVecX * toTeammateVecX) + (forwardVecY * toTeammateVecY);
+                    return dotProduct > 0;
+                })
+                .min(Comparator.comparingDouble(p -> p.distanceTo(this)))
+                .orElse(null);
 
         if (bestTeammate != null) {
-            kickInDirection(ball, bestTeammate.getCenterX() - ball.getCenterX(), bestTeammate.getCenterY() - ball.getCenterY(), 9.0);
+            kickInDirection(ball, bestTeammate.getCenterX() - ball.getCenterX(),
+                    bestTeammate.getCenterY() - ball.getCenterY(), 9.0);
         } else {
             kickInDirection(ball, forwardVecX, forwardVecY, 4.5);
         }
     }
+
     public void checkWallCollision(int minX, int maxX, int minY, int maxY) {
         x = Math.max(minX, Math.min(x, maxX - size));
         y = Math.max(minY, Math.min(y, maxY - size));
@@ -1836,29 +2324,39 @@ class Player extends GameObject {
         this.lastDirX = dirX;
         this.lastDirY = dirY;
     }
-    
+
     public void setSprite(BufferedImage newSprite) {
         if (newSprite != null) {
             this.sprite = newSprite;
         }
     }
 
-    public PlayerRole getRole() { return role; }
-    public String getTeam() { return team; }
-    public boolean isDribbling() { return isDribbling; }
-    
+    public PlayerRole getRole() {
+        return role;
+    }
+
+    public String getTeam() {
+        return team;
+    }
+
+    public boolean isDribbling() {
+        return isDribbling;
+    }
+
     @Override
     public void draw(Graphics2D g2d) {
-        if (!(this instanceof AIPlayer) && this.team.equals("Team 1") && gamePanel.getGameState() != GamePanel.GameState.PENALTY_SHOOTOUT) {
+        if (!(this instanceof AIPlayer) && this.team.equals("Team 1")
+                && gamePanel.getGameState() != GamePanel.GameState.PENALTY_SHOOTOUT) {
             g2d.setColor(Color.YELLOW);
-            g2d.fillOval((int)getCenterX() - 5, (int)y + size + 2, 10, 10);
+            g2d.fillOval((int) getCenterX() - 5, (int) y + size + 2, 10, 10);
         }
 
         if (sprite != null) {
             AffineTransform oldTransform = g2d.getTransform();
             g2d.translate(getCenterX(), getCenterY());
 
-            boolean shouldRotate = (gamePanel.getGameState() != GamePanel.GameState.PENALTY_SHOOTOUT) || (this.getRole() == PlayerRole.GOALKEEPER);
+            boolean shouldRotate = (gamePanel.getGameState() != GamePanel.GameState.PENALTY_SHOOTOUT)
+                    || (this.getRole() == PlayerRole.GOALKEEPER);
 
             if (shouldRotate) {
                 if (this.getRole() != PlayerRole.GOALKEEPER) {
@@ -1888,9 +2386,12 @@ class Player extends GameObject {
 
 class AIPlayer extends Player {
     private double homeX, homeY;
-    public AIPlayer(double x, double y, int size, BufferedImage sprite, Color fallbackColor, String team, PlayerRole role, GamePanel gamePanel) {
+
+    public AIPlayer(double x, double y, int size, BufferedImage sprite, Color fallbackColor, String team,
+            PlayerRole role, GamePanel gamePanel) {
         super(x, y, size, sprite, fallbackColor, team, role, gamePanel);
     }
+
     public AIPlayer(Player other, double homeX, double homeY) {
         super(other.x, other.y, other.size, other.sprite, other.fallbackColor, other.team, other.role, other.gamePanel);
         this.velX = other.velX;
@@ -1902,11 +2403,21 @@ class AIPlayer extends Player {
         this.homeX = homeX;
         this.homeY = homeY;
     }
-    public double getHomeX() { return homeX; }
-    public double getHomeY() { return homeY; }
-    public void setHomePosition(double hx, double hy) { this.homeX = hx; this.homeY = hy; }
-    
-    @Override 
+
+    public double getHomeX() {
+        return homeX;
+    }
+
+    public double getHomeY() {
+        return homeY;
+    }
+
+    public void setHomePosition(double hx, double hy) {
+        this.homeX = hx;
+        this.homeY = hy;
+    }
+
+    @Override
     public void move() {
         if (gamePanel.getGameState() == GamePanel.GameState.PENALTY_SHOOTOUT) {
         } else if (gamePanel.getGameState() == GamePanel.GameState.RUNNING) {
@@ -1922,14 +2433,13 @@ class AIPlayer extends Player {
                 velX = 0;
                 velY = 0;
             }
-        }
-        else {
+        } else {
             velX = 0;
             velY = 0;
         }
         super.move();
     }
-    
+
     private void decideAction() {
         if (this.isDribbling()) {
             decideWithBall();
@@ -1981,7 +2491,8 @@ class AIPlayer extends Player {
         double halfWayLine = GamePanel.PLAYABLE_X + GamePanel.PLAYABLE_WIDTH / 2.0;
         switch (role) {
             case STRIKER:
-                targetX = (team.equals("Team 1")) ? GamePanel.PLAYABLE_X + GamePanel.PLAYABLE_WIDTH - 150 : GamePanel.PLAYABLE_X + 150;
+                targetX = (team.equals("Team 1")) ? GamePanel.PLAYABLE_X + GamePanel.PLAYABLE_WIDTH - 150
+                        : GamePanel.PLAYABLE_X + 150;
                 targetY = this.homeY;
                 break;
             case MIDFIELDER:
@@ -1999,14 +2510,14 @@ class AIPlayer extends Player {
         }
         moveTo(targetX, targetY, GamePanel.AI_BASE_SPEED * 0.8);
     }
-    
+
     private void behaveDefensively() {
         Ball ball = gamePanel.getBall();
         if (role == PlayerRole.GOALKEEPER) {
             moveTo(homeX, ball.getCenterY(), GamePanel.AI_BASE_SPEED * 1.5);
             return;
         }
-        
+
         Player closestToBall = gamePanel.getTeam(this.team).stream()
                 .filter(p -> p.getRole() != PlayerRole.GOALKEEPER)
                 .min(Comparator.comparingDouble(p -> p.distanceTo(ball))).orElse(this);
@@ -2018,9 +2529,15 @@ class AIPlayer extends Player {
     }
 
     private void moveTo(double targetX, double targetY, double speed) {
-        double dx = targetX - this.getCenterX(); double dy = targetY - this.getCenterY();
+        double dx = targetX - this.getCenterX();
+        double dy = targetY - this.getCenterY();
         double distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance > 1) { velX = (dx / distance) * speed; velY = (dy / distance) * speed; }
-        else { velX = 0; velY = 0; }
+        if (distance > 1) {
+            velX = (dx / distance) * speed;
+            velY = (dy / distance) * speed;
+        } else {
+            velX = 0;
+            velY = 0;
+        }
     }
 }
